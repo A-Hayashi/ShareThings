@@ -1,33 +1,189 @@
+#include <BLEServer.h>
+#include <BLEDevice.h>
+#include <BLEUtils.h>
+#include <BLE2902.h>
 #include <Wire.h>
+
 #define SDA_PIN 21
 #define SCL_PIN 22
 
+// Device Name: Maximum 30 bytes
+#define DEVICE_NAME "LINE Things Trial ESP32"
+
+// User service UUID: Change this to your generated service UUID
+#define USER_SERVICE_UUID "3fd1e37b-83a3-4691-8a70-dc42cd486ef7"
+// User service characteristics
+#define WRITE_CHARACTERISTIC_UUID "E9062E71-9E62-4BC6-B0D3-35CDCD9B027B"
+#define NOTIFY_CHARACTERISTIC_UUID "62FBD229-6EDD-4D1A-B554-5C4E1BB29169"
+
+// PSDI Service UUID: Fixed value for Developer Trial
+#define PSDI_SERVICE_UUID "E625601E-9E55-4597-A598-76018A0D293D"
+#define PSDI_CHARACTERISTIC_UUID "26E2B12B-85F0-4F3F-9FDD-91D114270E6E"
+
+#define BUTTON 0
+#define LED1 2
+
+BLEServer* thingsServer;
+BLESecurity *thingsSecurity;
+BLEService* userService;
+BLEService* psdiService;
+BLECharacteristic* psdiCharacteristic;
+BLECharacteristic* writeCharacteristic;
+BLECharacteristic* notifyCharacteristic;
+
+bool deviceConnected = false;
+bool oldDeviceConnected = false;
+
+volatile int btnAction = 0;
+
+
+void action1();
+void action2();
+
+
+class serverCallbacks: public BLEServerCallbacks {
+    void onConnect(BLEServer* pServer) {
+      deviceConnected = true;
+    };
+
+    void onDisconnect(BLEServer* pServer) {
+      deviceConnected = false;
+    }
+};
+
+class writeCallback: public BLECharacteristicCallbacks {
+    void onWrite(BLECharacteristic *bleWriteCharacteristic) {
+      std::string value = bleWriteCharacteristic->getValue();
+      if ((char)value[0] <= 1) {
+        Serial.println("Write");
+        static char action = 0;
+        action = !action;
+        if (action == 0) {
+          action1();
+        } else {
+          action2();
+        }
+        digitalWrite(LED1, (char)value[0]);
+      }
+    }
+};
 
 void setup() {
-  while (!Serial);
+  Serial.begin(115200);
 
-  Serial.begin(9600);
-  Serial.println("started");
+  device_init();
 
+  pinMode(LED1, OUTPUT);
+  pinMode(BUTTON, INPUT_PULLUP);
+  attachInterrupt(BUTTON, buttonAction, CHANGE);
+
+  BLEDevice::init("");
+  BLEDevice::setEncryptionLevel(ESP_BLE_SEC_ENCRYPT_NO_MITM);
+
+  // Security Settings
+  BLESecurity *thingsSecurity = new BLESecurity();
+  thingsSecurity->setAuthenticationMode(ESP_LE_AUTH_REQ_SC_ONLY);
+  thingsSecurity->setCapability(ESP_IO_CAP_NONE);
+  thingsSecurity->setInitEncryptionKey(ESP_BLE_ENC_KEY_MASK | ESP_BLE_ID_KEY_MASK);
+
+  setupServices();
+  startAdvertising();
+  Serial.println("Ready to Connect");
+}
+
+void loop() {
+  uint8_t btnValue;
+
+  while (btnAction > 0 && deviceConnected) {
+    btnValue = !digitalRead(BUTTON);
+    btnAction = 0;
+    notifyCharacteristic->setValue(&btnValue, 1);
+    notifyCharacteristic->notify();
+    delay(20);
+  }
+  // Disconnection
+  if (!deviceConnected && oldDeviceConnected) {
+    delay(500); // Wait for BLE Stack to be ready
+    thingsServer->startAdvertising(); // Restart advertising
+    oldDeviceConnected = deviceConnected;
+  }
+  // Connection
+  if (deviceConnected && !oldDeviceConnected) {
+    oldDeviceConnected = deviceConnected;
+  }
+}
+
+void setupServices(void) {
+  // Create BLE Server
+  thingsServer = BLEDevice::createServer();
+  thingsServer->setCallbacks(new serverCallbacks());
+
+  // Setup User Service
+  userService = thingsServer->createService(USER_SERVICE_UUID);
+  // Create Characteristics for User Service
+  writeCharacteristic = userService->createCharacteristic(WRITE_CHARACTERISTIC_UUID, BLECharacteristic::PROPERTY_WRITE);
+  writeCharacteristic->setAccessPermissions(ESP_GATT_PERM_READ_ENCRYPTED | ESP_GATT_PERM_WRITE_ENCRYPTED);
+  writeCharacteristic->setCallbacks(new writeCallback());
+
+  notifyCharacteristic = userService->createCharacteristic(NOTIFY_CHARACTERISTIC_UUID, BLECharacteristic::PROPERTY_NOTIFY);
+  notifyCharacteristic->setAccessPermissions(ESP_GATT_PERM_READ_ENCRYPTED | ESP_GATT_PERM_WRITE_ENCRYPTED);
+  BLE2902* ble9202 = new BLE2902();
+  ble9202->setNotifications(true);
+  ble9202->setAccessPermissions(ESP_GATT_PERM_READ_ENCRYPTED | ESP_GATT_PERM_WRITE_ENCRYPTED);
+  notifyCharacteristic->addDescriptor(ble9202);
+
+  // Setup PSDI Service
+  psdiService = thingsServer->createService(PSDI_SERVICE_UUID);
+  psdiCharacteristic = psdiService->createCharacteristic(PSDI_CHARACTERISTIC_UUID, BLECharacteristic::PROPERTY_READ);
+  psdiCharacteristic->setAccessPermissions(ESP_GATT_PERM_READ_ENCRYPTED | ESP_GATT_PERM_WRITE_ENCRYPTED);
+
+  // Set PSDI (Product Specific Device ID) value
+  uint64_t macAddress = ESP.getEfuseMac();
+  psdiCharacteristic->setValue((uint8_t*) &macAddress, sizeof(macAddress));
+
+  // Start BLE Services
+  userService->start();
+  psdiService->start();
+}
+
+void startAdvertising(void) {
+  // Start Advertising
+  BLEAdvertisementData scanResponseData = BLEAdvertisementData();
+  scanResponseData.setFlags(0x06); // GENERAL_DISC_MODE 0x02 | BR_EDR_NOT_SUPPORTED 0x04
+  scanResponseData.setName(DEVICE_NAME);
+
+  thingsServer->getAdvertising()->addServiceUUID(userService->getUUID());
+  thingsServer->getAdvertising()->setScanResponseData(scanResponseData);
+  thingsServer->getAdvertising()->start();
+}
+
+void buttonAction() {
+  btnAction++;
+}
+
+
+
+
+void device_init() {
   Wire.begin(SDA_PIN, SCL_PIN);
 }
 
-//メイン関数(動作は繰り返す)
-void loop() {
-  //  i2c_scanner();
+
+void action1() {
   cmd_kaiten_lamp(100, 1);
   cmd_servo(1, 0, 90);
   cmd_servo(2, 0, 45);
-  delay(5000);
+}
+
+void action2() {
   cmd_kaiten_lamp(0, 0);
   cmd_servo(1, 180, 90);
   cmd_servo(2, 90, 45);
-  delay(5000);
 }
 
 static const int kaiten_addr = 0x15;
 
-void cmd_kaiten(uint8_t duty) {
+static void cmd_kaiten(uint8_t duty) {
   char kaiten_cmd[2];
 
   kaiten_cmd[0] = 0x01;
@@ -40,7 +196,7 @@ void cmd_kaiten(uint8_t duty) {
   Wire.endTransmission();
 }
 
-void cmd_lamp(bool lamp) {
+static void cmd_lamp(bool lamp) {
   char kaiten_cmd[2];
 
   kaiten_cmd[0] = 0x02;
@@ -53,14 +209,14 @@ void cmd_lamp(bool lamp) {
   Wire.endTransmission();
 }
 
-void cmd_kaiten_lamp(uint8_t duty, bool lamp) {
+static void cmd_kaiten_lamp(uint8_t duty, bool lamp) {
   cmd_kaiten(duty);
   cmd_lamp(lamp);
 }
 
 static const int servo_addr = 0x25;
 
-void cmd_servo(uint8_t servo_no, uint8_t angle, uint8_t speed) {
+static void cmd_servo(uint8_t servo_no, uint8_t angle, uint8_t speed) {
   char servo_cmd[4] = { 0x01, 0x01, 0, 90 };
   servo_cmd[0] = 0x01;
   servo_cmd[1] = servo_no;
@@ -74,7 +230,7 @@ void cmd_servo(uint8_t servo_no, uint8_t angle, uint8_t speed) {
 }
 
 
-void i2c_scanner()
+static void i2c_scanner()
 {
   byte error, address;
   int nDevices;
@@ -115,3 +271,4 @@ void i2c_scanner()
 
   delay(5000);           // wait 5 seconds for next scan
 }
+

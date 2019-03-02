@@ -11,6 +11,7 @@ const PSDI_CHARACTERISTIC_UUID  = '26E2B12B-85F0-4F3F-9FDD-91D114270E6E';
 // UI settings
 let ledState = false; // true: LED on, false: LED off
 let box1State = false;
+let box2State = false;
 let clickCount = 0;
 
 // -------------- //
@@ -41,6 +42,14 @@ function handlerToggleBox1Lock() {
 }
 
 
+function handlerToggleBox2Lock() {
+    box2State = !box2State;
+
+    uiToggleBox1LockButton(box2State);
+    liffToggleDeviceBox1LockState(box2State);
+}
+
+
 // ------------ //
 // UI functions //
 // ------------ //
@@ -61,6 +70,10 @@ function uiToggleBox1LockButton(state) {
     el.innerText = state ? "Box1 UnLocked" : "Box1 Locked";
 }
 
+function uiToggleBox2LockButton(state) {
+    const el = document.getElementById("btn-box2-lock-toggle");
+    el.innerText = state ? "Box2 UnLocked" : "Box2 Locked";
+}
 
 function uiCountPressButton() {
     clickCount++;
@@ -212,6 +225,7 @@ function liffConnectToDevice(device) {
             // Reset UI elements
             uiToggleLedButton(false);
             uiToggleBox1LockButton(false);
+            uiToggleBox2LockButton(false);
 
             uiToggleStateButton(false);
 
@@ -294,6 +308,16 @@ function liffToggleDeviceBox1LockState(state) {
     // off: 0x00
     window.ledCharacteristic.writeValue(
         state ? new Uint8Array([0x00, 0x00]) : new Uint8Array([0x00, 0x01])
+    ).catch(error => {
+        uiStatusError(makeErrorMsg(error), false);
+    });
+}
+
+function liffToggleDeviceBox2LockState(state) {
+    // on: 0x01
+    // off: 0x00
+    window.ledCharacteristic.writeValue(
+        state ? new Uint8Array([0x01, 0x00]) : new Uint8Array([0x01, 0x01])
     ).catch(error => {
         uiStatusError(makeErrorMsg(error), false);
     });

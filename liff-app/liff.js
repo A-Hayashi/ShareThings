@@ -12,6 +12,7 @@ const PSDI_CHARACTERISTIC_UUID  = '26E2B12B-85F0-4F3F-9FDD-91D114270E6E';
 let ledState = false; // true: LED on, false: LED off
 let box1State = false;
 let box2State = false;
+let warningLightState = false;
 let clickCount = 0;
 
 // -------------- //
@@ -50,6 +51,14 @@ function handlerToggleBox2Lock() {
 }
 
 
+function handlerToggleWarningLight() {
+    warningLightState = !warningLightState;
+
+    uiToggleWarningLightButton(warningLightState);
+    liffToggleDeviceWarningLightState(warningLightState);
+}
+
+
 // ------------ //
 // UI functions //
 // ------------ //
@@ -73,6 +82,11 @@ function uiToggleBox1LockButton(state) {
 function uiToggleBox2LockButton(state) {
     const el = document.getElementById("btn-box2-lock-toggle");
     el.innerText = state ? "Box2 UnLocked" : "Box2 Locked";
+}
+
+function uiToggleWarningLightButton(state) {
+    const el = document.getElementById("btn-warning-light-toggle");
+    el.innerText = state ? "Warning Light Off" : "Warning Light On";
 }
 
 function uiCountPressButton() {
@@ -226,6 +240,7 @@ function liffConnectToDevice(device) {
             uiToggleLedButton(false);
             uiToggleBox1LockButton(false);
             uiToggleBox2LockButton(false);
+            uiToggleWarningLightButton(false);
 
             uiToggleStateButton(false);
 
@@ -296,7 +311,7 @@ function liffToggleDeviceLedState(state) {
     // on: 0x01
     // off: 0x00
     window.ledCharacteristic.writeValue(
-        state ? new Uint8Array([0x02, 100]) : new Uint8Array([0x02, 0])
+        state ? new Uint8Array([0xff, 0x00]) : new Uint8Array([0xff, 0x01])
     ).catch(error => {
         uiStatusError(makeErrorMsg(error), false);
     });
@@ -318,6 +333,16 @@ function liffToggleDeviceBox2LockState(state) {
     // off: 0x00
     window.ledCharacteristic.writeValue(
         state ? new Uint8Array([0x01, 0x00]) : new Uint8Array([0x01, 0x01])
+    ).catch(error => {
+        uiStatusError(makeErrorMsg(error), false);
+    });
+}
+
+function liffToggleDeviceWarningLightState(state) {
+    // on: 0x01
+    // off: 0x00
+    window.ledCharacteristic.writeValue(
+        state ? new Uint8Array([0x02, 0]) : new Uint8Array([0x02, 100])
     ).catch(error => {
         uiStatusError(makeErrorMsg(error), false);
     });

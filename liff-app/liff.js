@@ -264,7 +264,7 @@ function liffToggleDeviceLedState(state) {
     // on: 0x01
     // off: 0x00
     window.ledCharacteristic.writeValue(
-        state ? new Uint8Array([0x01]) : new Uint8Array([0x00])
+        state ? new Uint8Array([0x02, 100]) : new Uint8Array([0x02, 0])
     ).catch(error => {
         uiStatusError(makeErrorMsg(error), false);
     });

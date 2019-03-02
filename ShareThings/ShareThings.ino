@@ -39,7 +39,8 @@ volatile int btnAction = 0;
 
 void action1();
 void action2();
-
+static void cmd_kaiten_lamp(uint8_t duty, bool lamp);
+static void cmd_servo(uint8_t servo_no, uint8_t angle, uint8_t speed);
 
 class serverCallbacks: public BLEServerCallbacks {
     void onConnect(BLEServer* pServer) {
@@ -51,19 +52,54 @@ class serverCallbacks: public BLEServerCallbacks {
     }
 };
 
+#define BOX1_LOCK     0x00
+#define BOX2_LOCK     0x01
+#define WARNING_LIGHT 0x02
+#define TEST_LED      0xff
+
+#define LOCK    1
+#define UNLOCK  0
+
 class writeCallback: public BLECharacteristicCallbacks {
     void onWrite(BLECharacteristic *bleWriteCharacteristic) {
       std::string value = bleWriteCharacteristic->getValue();
-      if ((char)value[0] <= 1) {
-        Serial.println("Write");
-        static char action = 0;
-        action = !action;
-        if (action == 0) {
-          action1();
-        } else {
-          action2();
-        }
-        digitalWrite(LED1, (char)value[0]);
+      switch ((char)value[0]) {
+        case BOX1_LOCK: {
+            char lock_state = (char)value[1];
+            if (lock_state == UNLOCK) {
+              cmd_servo(1, 0, 90);
+            } else {
+              cmd_servo(1, 180, 90);
+            }
+            break;
+          }
+        case BOX2_LOCK: {
+            char lock_state = (char)value[1];
+            if (lock_state == UNLOCK) {
+              cmd_servo(2, 0, 90);
+            } else {
+              cmd_servo(2, 180, 90);
+            }
+            break;
+          }
+        case WARNING_LIGHT: {
+            char duty = (char)value[1];
+            if (duty == 0) {
+              cmd_kaiten_lamp(0, 0);
+            } else {
+              cmd_kaiten_lamp(duty, 1);
+            }
+            break;
+          }
+        case TEST_LED: {
+            char led_state = (char)value[1];
+            if (led_state == 0) {
+              digitalWrite(LED1, LOW);
+            } else {
+              digitalWrite(LED1, HIGH);
+            }
+            break;
+          }
       }
     }
 };

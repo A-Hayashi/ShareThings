@@ -45,8 +45,8 @@ function handlerToggleBox1Lock() {
 function handlerToggleBox2Lock() {
     box2State = !box2State;
 
-    uiToggleBox1LockButton(box2State);
-    liffToggleDeviceBox1LockState(box2State);
+    uiToggleBox2LockButton(box2State);
+    liffToggleDeviceBox2LockState(box2State);
 }
 
 

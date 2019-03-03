@@ -60,6 +60,11 @@ class serverCallbacks: public BLEServerCallbacks {
 #define LOCK    1
 #define UNLOCK  0
 
+#define LOCKED_ANGLE      20
+#define UNLOCKED_ANGLE    90
+
+#define ERROR_DETECT_PIN  5
+
 class writeCallback: public BLECharacteristicCallbacks {
     void onWrite(BLECharacteristic *bleWriteCharacteristic) {
       std::string value = bleWriteCharacteristic->getValue();
@@ -67,27 +72,27 @@ class writeCallback: public BLECharacteristicCallbacks {
         case BOX1_LOCK: {
             char lock_state = (char)value[1];
             if (lock_state == UNLOCK) {
-              cmd_servo(1, 0, 90);
+              cmd_servo(1, UNLOCKED_ANGLE, 90);
             } else {
-              cmd_servo(1, 180, 90);
+              cmd_servo(1, LOCKED_ANGLE, 90);
             }
             break;
           }
         case BOX2_LOCK: {
             char lock_state = (char)value[1];
             if (lock_state == UNLOCK) {
-              cmd_servo(2, 0, 90);
+              cmd_servo(2, UNLOCKED_ANGLE, 90);
             } else {
-              cmd_servo(2, 180, 90);
+              cmd_servo(2, LOCKED_ANGLE, 90);
             }
             break;
           }
         case WARNING_LIGHT: {
             char duty = (char)value[1];
             if (duty == 0) {
-              cmd_kaiten_lamp(0, 0);
+              //              cmd_kaiten_lamp(0, 0);
             } else {
-              cmd_kaiten_lamp(duty, 1);
+              //              cmd_kaiten_lamp(duty, 1);
             }
             break;
           }
@@ -109,6 +114,8 @@ void setup() {
 
   device_init();
 
+  pinMode(ERROR_DETECT_PIN, INPUT);
+
   pinMode(LED1, OUTPUT);
   pinMode(BUTTON, INPUT_PULLUP);
   attachInterrupt(BUTTON, buttonAction, CHANGE);
@@ -127,8 +134,30 @@ void setup() {
   Serial.println("Ready to Connect");
 }
 
+static void error_proc(void)
+{
+  bool error;
+  static bool error_old;
+  if (digitalRead(ERROR_DETECT_PIN) == LOW) {
+    error = false;
+  } else {
+    error = true;
+  }
+  if (error_old != error) {
+    Serial.print("Error: ");
+    Serial.println(error);
+    if (error == true) {
+      cmd_kaiten_lamp(100, 1);
+    } else {
+      cmd_kaiten_lamp(0, 0);
+    }
+  }
+  error_old = error;
+}
+
 void loop() {
   uint8_t btnValue;
+  error_proc();
 
   while (btnAction > 0 && deviceConnected) {
     btnValue = !digitalRead(BUTTON);
